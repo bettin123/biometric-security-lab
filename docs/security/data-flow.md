@@ -1,0 +1,573 @@
+# M0.10 — Data Flow
+
+## 0.10.1 Purpose
+
+This document defines how data moves through the biometric access-control security laboratory.
+
+The data flow model describes both normal application operations and security-related flows, including authentication, biometric recognition, API requests, security telemetry, detection and SOC investigation.
+
+The objective is to establish a clear relationship between application activity and the security events generated from that activity.
+
+The primary security workflow is:
+
+```text
+Activity
+    ↓
+Application Processing
+    ↓
+Security Telemetry
+    ↓
+Wazuh Collection
+    ↓
+Detection
+    ↓
+Alert
+    ↓
+SOC Investigation
+    ↓
+Response
+```
+
+The data flow model is therefore a fundamental component of the laboratory's Detection Engineering architecture.
+
+---
+
+## 0.10.2 Actors and Data Sources
+
+The main actors and data sources participating in the system are:
+
+| Actor / Component | Role | Data Produced / Consumed |
+|---|---|---|
+| User | Legitimate application user | Credentials, authentication requests, biometric input |
+| Administrator | Manages application and security configuration | Administrative requests, user management data |
+| Parrot / Kali | Controlled attacker workstation | Malicious requests, enumeration attempts, authentication abuse |
+| Next.js | Presentation layer | User input, API requests, application responses |
+| Spring Boot | Application and security layer | Authentication events, authorization events, API activity, telemetry |
+| PostgreSQL | Application data store | Users, roles, permissions, application data |
+| CompreFace | Biometric recognition engine | Face recognition requests and recognition results |
+| Wazuh | Security monitoring layer | Telemetry, detections and alerts |
+| SOC Analyst | Security investigation actor | Alerts, evidence, investigation results and response actions |
+
+---
+
+## 0.10.3 Application Data Flow
+
+The primary application flow begins when a user or controlled attacker interacts with the Next.js frontend.
+
+```text
+User / Attacker
+       │
+       │ HTTP/HTTPS
+       ▼
+   Next.js
+       │
+       │ API Request
+       ▼
+ Spring Boot
+       │
+       ├───────────────┐
+       │               │
+       ▼               ▼
+ PostgreSQL       CompreFace
+       │               │
+       └───────┬───────┘
+               │
+               ▼
+        Application Result
+               │
+               ▼
+            Next.js
+               │
+               ▼
+        User / Attacker
+```
+
+The Next.js application is responsible for presentation and interaction with the user.
+
+Spring Boot acts as the central application and security boundary. It processes API requests, performs authentication and authorization, validates input, applies security controls and communicates with the underlying services.
+
+PostgreSQL stores persistent application information.
+
+CompreFace performs biometric recognition operations.
+
+---
+
+## 0.10.4 Authentication Data Flow
+
+Authentication requests are processed through the Spring Boot backend.
+
+The general authentication flow is:
+
+```text
+User
+ │
+ │ Credentials / Authentication Request
+ ▼
+Next.js
+ │
+ │ API Request
+ ▼
+Spring Boot
+ │
+ ├── Input Validation
+ │
+ ├── Authentication
+ │
+ ├── Authorization Context
+ │
+ └── Security Event Generation
+ │
+ ├───────────────┐
+ │               │
+ ▼               ▼
+PostgreSQL     Telemetry
+ │               │
+ │               ▼
+ │             Wazuh
+ │
+ ▼
+Authentication Result
+ │
+ ▼
+Next.js
+ │
+ ▼
+User
+```
+
+Authentication activity can generate both successful and unsuccessful security events.
+
+Examples include:
+
+- Successful authentication
+- Failed authentication
+- Invalid credentials
+- Repeated authentication failures
+- Unauthorized access attempt
+- Session-related security events
+- Suspicious authentication behavior
+
+These events are represented as structured security telemetry.
+
+---
+
+## 0.10.5 Biometric Recognition Flow
+
+Biometric recognition is performed through the backend and CompreFace.
+
+The application does not allow the frontend to directly control the biometric engine.
+
+The expected flow is:
+
+```text
+User
+ │
+ │ Biometric Input
+ ▼
+Next.js
+ │
+ │ API Request
+ ▼
+Spring Boot
+ │
+ │ Validation / Authorization
+ ▼
+CompreFace
+ │
+ │ Recognition Result
+ ▼
+Spring Boot
+ │
+ ├── Recognition Success
+ ├── Unknown Face
+ ├── Recognition Failure
+ └── Security Telemetry
+ │
+ ├───────────────┐
+ │               │
+ ▼               ▼
+Application    Wazuh
+Decision
+ │
+ ▼
+Access Result
+```
+
+The backend determines how the recognition result is interpreted by the application.
+
+Possible outcomes include:
+
+- Recognized and authorized user
+- Recognized but unauthorized user
+- Unknown face
+- Recognition failure
+- Invalid biometric request
+- Repeated recognition attempts
+
+The recognition result itself can therefore become a security-relevant event.
+
+---
+
+## 0.10.6 Security Telemetry Flow
+
+Security telemetry is generated by application activity rather than being manually fabricated for the laboratory.
+
+The Spring Boot application produces structured JSON events for relevant security operations.
+
+A simplified telemetry flow is:
+
+```text
+Application Activity
+        │
+        ▼
+   Spring Boot
+        │
+        ▼
+Security Event
+        │
+        ▼
+Structured JSON
+        │
+        ▼
+Wazuh Collection
+```
+
+Examples of telemetry-producing events include:
+
+```text
+authentication.success
+authentication.failure
+authorization.denied
+biometric.recognition.success
+biometric.recognition.unknown
+api.request
+api.suspicious_request
+rate_limit.exceeded
+admin.access
+session.revoked
+```
+
+The exact event taxonomy will be refined during the implementation and Detection Engineering milestones.
+
+A security event should contain sufficient contextual information to support detection and investigation.
+
+Typical fields may include:
+
+```json
+{
+  "timestamp": "...",
+  "event_type": "...",
+  "source_ip": "...",
+  "user_id": "...",
+  "endpoint": "...",
+  "result": "...",
+  "severity": "...",
+  "request_id": "..."
+}
+```
+
+Sensitive information such as passwords, authentication secrets or unnecessary biometric data must not be written to telemetry.
+
+---
+
+## 0.10.7 Detection and Alert Flow
+
+Wazuh consumes the security telemetry generated by the application.
+
+The security monitoring flow is:
+
+```text
+Application Event
+       │
+       ▼
+Structured JSON Telemetry
+       │
+       ▼
+      Wazuh
+       │
+       ├── Decoder
+       │
+       ├── Rule
+       │
+       ├── Correlation
+       │
+       └── Severity Evaluation
+       │
+       ▼
+      Alert
+       │
+       ▼
+ SOC Analyst
+```
+
+Individual events may not necessarily represent an incident.
+
+Detection rules can correlate multiple events to identify suspicious behavior.
+
+For example:
+
+```text
+authentication.failure
+        │
+        ├── Same source IP
+        ├── Multiple attempts
+        └── Short time window
+                │
+                ▼
+       Brute Force Detection
+                │
+                ▼
+              Alert
+```
+
+Another example:
+
+```text
+biometric.recognition.unknown
+        │
+        ├── Repeated attempts
+        ├── Same source
+        └── Unusual access pattern
+                │
+                ▼
+       Suspicious Access Detection
+                │
+                ▼
+              Alert
+```
+
+The purpose of the detection layer is to transform raw application telemetry into meaningful security signals.
+
+---
+
+## 0.10.8 Administrative Data Flow
+
+Administrative operations follow the same backend-controlled architecture.
+
+```text
+Administrator
+      │
+      ▼
+   Next.js
+      │
+      ▼
+ Spring Boot
+      │
+      ├── Authentication
+      ├── Authorization
+      ├── Input Validation
+      └── Security Telemetry
+      │
+      ├───────────────┐
+      │               │
+      ▼               ▼
+ PostgreSQL         Wazuh
+      │
+      ▼
+Application State
+```
+
+Administrative operations may include:
+
+- User creation
+- User modification
+- Role assignment
+- Permission changes
+- Account management
+- Session revocation
+- Security configuration changes
+
+Administrative activity is considered security-sensitive and should generate appropriate telemetry.
+
+---
+
+## 0.10.9 Trust Boundary Crossings
+
+Several important trust boundary crossings exist within the system.
+
+### External User to Next.js
+
+```text
+User
+  │
+  │ Untrusted Input
+  ▼
+Next.js
+```
+
+All input received from the user must be considered untrusted.
+
+---
+
+### Next.js to Spring Boot
+
+```text
+Next.js
+   │
+   │ API Request
+   ▼
+Spring Boot
+```
+
+The backend must not assume that requests originating from the frontend are trustworthy.
+
+Authentication, authorization and validation must be enforced server-side.
+
+---
+
+### Spring Boot to PostgreSQL
+
+```text
+Spring Boot
+     │
+     │ Database Queries
+     ▼
+PostgreSQL
+```
+
+Database access is restricted to the application backend.
+
+The frontend does not directly access PostgreSQL.
+
+---
+
+### Spring Boot to CompreFace
+
+```text
+Spring Boot
+     │
+     │ Biometric API Request
+     ▼
+CompreFace
+```
+
+Communication with the biometric engine is controlled by the backend.
+
+---
+
+### Application to Wazuh
+
+```text
+Application
+     │
+     │ Security Telemetry
+     ▼
+Wazuh
+```
+
+This crossing represents the transition from application-level activity to security monitoring.
+
+---
+
+## 0.10.10 Data Flow Security Considerations
+
+The following security principles apply to the system's data flows.
+
+### Input Validation
+
+All externally supplied input must be treated as untrusted and validated before processing.
+
+### Authentication
+
+Authentication must be enforced by the backend and must not rely solely on frontend controls.
+
+### Authorization
+
+Authorization decisions must be performed server-side based on the authenticated user's permissions.
+
+### Least Privilege
+
+Each service should receive only the permissions and access required for its function.
+
+### Telemetry Integrity
+
+Security telemetry should be generated consistently and contain enough contextual information to support detection and investigation.
+
+### Sensitive Data Protection
+
+Sensitive information must not be unnecessarily stored in application logs or security telemetry.
+
+Examples include:
+
+- Passwords
+- Authentication tokens
+- Secrets
+- Database credentials
+- Unnecessary biometric information
+
+### Service Isolation
+
+Docker is used to isolate the principal application and infrastructure components.
+
+### Controlled Attack Traffic
+
+Kali or Parrot is used as a controlled attacker environment against the laboratory infrastructure.
+
+Attack traffic must remain within the authorized laboratory environment.
+
+### Detection Visibility
+
+Security-relevant operations should produce telemetry that allows the SOC layer to observe and investigate suspicious behavior.
+
+### Investigation Support
+
+Telemetry should provide enough information to reconstruct an event timeline, identify the source of activity and determine the scope of a potential incident.
+
+---
+
+## Data Flow Summary
+
+The complete security-oriented data flow can be summarized as:
+
+```text
+┌─────────────────────┐
+│   User / Attacker   │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│      Next.js        │
+│   Presentation      │
+└──────────┬──────────┘
+           │
+           │ API
+           ▼
+┌─────────────────────┐
+│    Spring Boot      │
+│                     │
+│ Auth / Authorization│
+│ Validation          │
+│ API Security        │
+│ Business Logic      │
+│ Security Telemetry  │
+└──────┬────────┬─────┘
+       │        │
+       ▼        ▼
+┌───────────┐ ┌──────────────┐
+│PostgreSQL │ │  CompreFace  │
+└───────────┘ └──────────────┘
+       │        │
+       └────┬───┘
+            │
+            ▼
+   ┌─────────────────┐
+   │ Security        │
+   │ Telemetry       │
+   └────────┬────────┘
+            │
+            ▼
+      ┌───────────┐
+      │   Wazuh   │
+      │ Detection │
+      │ Alerting  │
+      └─────┬─────┘
+            │
+            ▼
+     ┌─────────────┐
+     │ SOC Analyst │
+     └─────────────┘
+```
+
+This flow represents the central architectural principle of the laboratory:
+
+> **Application activity must produce observable security telemetry that can be collected, detected, investigated and acted upon.**
