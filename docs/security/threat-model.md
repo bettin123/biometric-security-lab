@@ -323,3 +323,28 @@ An authenticated user attempts to access or modify an object belonging to anothe
 User A
 
 GET /api/resources/101
+
+
+
+# M0.9 — Threat Model
+
+## 0.9.1 Threat Modeling Methodology
+
+The threat model for the biometric access-control security laboratory uses **STRIDE** as its primary threat classification methodology.
+
+The identified threats are evaluated according to their potential impact on:
+
+- Authentication
+- Authorization
+- Biometric recognition
+- API security
+- Application integrity
+- Data confidentiality
+- Infrastructure availability
+- Security telemetry
+- SOC detection capabilities
+
+The risk of each identified scenario is evaluated using:
+
+```text
+Risk Score = Likelihood × Impact
