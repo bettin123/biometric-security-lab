@@ -1255,3 +1255,451 @@ M0.10 is considered complete when:
 - The relationship between attacks and security telemetry is documented.
 
 At this point, the laboratory has a defined conceptual data-flow baseline for implementation and subsequent security testing.
+
+---
+
+## 0.10.2 Data Flow Inventory
+
+The laboratory is composed of several interconnected data flows.
+
+Each flow represents a specific movement of information between components or logical security functions.
+
+The following inventory establishes the principal flows that will be analyzed throughout the data-flow model.
+
+| ID | Data Flow | Source | Destination | Primary Purpose |
+|---|---|---|---|---|
+| DF-01 | Application Request Flow | Client | Next.js / Spring Boot | Transport application requests |
+| DF-02 | Authentication Flow | Client / Authentication Process | Spring Boot | Establish and validate identity |
+| DF-03 | Authorization Flow | Authenticated Identity | Spring Boot | Determine access permissions |
+| DF-04 | Biometric Recognition Flow | Spring Boot | CompreFace | Perform biometric recognition |
+| DF-05 | Database Flow | Spring Boot | PostgreSQL | Store and retrieve application data |
+| DF-06 | Security Telemetry Flow | Application Services | Wazuh | Transport security-relevant events |
+| DF-07 | Detection and Alert Flow | Wazuh Processing Pipeline | Wazuh Alerts | Detect security conditions |
+| DF-08 | SOC Investigation Evidence Flow | Wazuh / Application Telemetry | SOC Analyst | Support investigation and incident analysis |
+
+---
+
+### DF-01 — Application Request Flow
+
+```text
+Client
+   ↓
+Next.js
+   ↓
+Spring Boot
+```
+
+This flow represents the primary path through which application requests enter the system.
+
+The client interacts with the Next.js presentation layer.
+
+Requests requiring backend functionality are then directed toward Spring Boot.
+
+Client-provided information is considered untrusted until it has passed through the appropriate backend security controls.
+
+Primary security relevance:
+
+- Client input is untrusted.
+- Requests may be manipulated by an attacker.
+- Authentication state must be validated.
+- Authorization must be enforced server-side.
+- Security-relevant requests should generate appropriate telemetry.
+
+---
+
+### DF-02 — Authentication Flow
+
+```text
+Client
+   ↓
+Authentication Request
+   ↓
+Next.js
+   ↓
+Spring Boot
+   ↓
+Authentication Validation
+   ↓
+Identity
+```
+
+This flow establishes the identity associated with an application request.
+
+Authentication information is considered security-sensitive.
+
+The backend is responsible for validating authentication state rather than trusting client-provided assertions.
+
+Authentication failures represent security-relevant activity and should be observable through the security telemetry pipeline.
+
+Primary security relevance:
+
+- Credential protection
+- Authentication integrity
+- Authentication abuse
+- Brute-force behavior
+- Account enumeration
+- Session or authentication-state manipulation
+
+---
+
+### DF-03 — Authorization Flow
+
+```text
+Authenticated Identity
+        ↓
+Roles / Permissions
+        ↓
+Authorization Check
+        ↓
+Allowed / Denied
+```
+
+This flow determines whether an authenticated identity is permitted to access a resource or perform an operation.
+
+Authorization decisions are enforced by Spring Boot.
+
+The frontend is not considered an authoritative authorization boundary.
+
+Primary security relevance:
+
+- Privilege escalation
+- Unauthorized resource access
+- Authorization bypass
+- Role manipulation
+- Permission abuse
+
+Authorization failures should be observable as security-relevant events.
+
+---
+
+### DF-04 — Biometric Recognition Flow
+
+```text
+Spring Boot
+     ↓
+Biometric Request
+     ↓
+CompreFace
+     ↓
+Recognition Processing
+     ↓
+Recognition Result
+     ↓
+Spring Boot
+```
+
+This flow represents communication between the application backend and the biometric recognition service.
+
+CompreFace performs the biometric recognition function.
+
+The recognition result is returned to Spring Boot and participates in the authentication process.
+
+The biometric service does not directly determine application authorization privileges.
+
+The intended conceptual relationship is:
+
+```text
+Biometric Recognition
+        ↓
+Identity
+        ↓
+Authentication
+        ↓
+Authorization
+```
+
+Primary security relevance:
+
+- Biometric data protection
+- Authentication manipulation
+- Unauthorized biometric requests
+- Recognition abuse
+- Service availability
+- Excessive biometric requests
+
+---
+
+### DF-05 — Database Flow
+
+```text
+Spring Boot
+     ↓
+Database Operation
+     ↓
+PostgreSQL
+     ↓
+Database Result
+     ↓
+Spring Boot
+```
+
+PostgreSQL provides persistent application data storage.
+
+The frontend does not directly communicate with PostgreSQL.
+
+Database access is mediated by Spring Boot so that backend security controls can be applied before protected resources are accessed.
+
+Primary security relevance:
+
+- Data confidentiality
+- Data integrity
+- Unauthorized database access
+- Injection-related attacks
+- Application data manipulation
+- Database availability
+
+---
+
+### DF-06 — Security Telemetry Flow
+
+```text
+Application Activity
+        ↓
+Security Event
+        ↓
+Structured Log
+        ↓
+Wazuh
+```
+
+This flow represents the movement of security-relevant telemetry from application activity into the monitoring and detection infrastructure.
+
+Security-relevant events may include:
+
+- Authentication failures
+- Authorization failures
+- Account enumeration
+- Brute-force behavior
+- Rate-limit violations
+- Suspicious API activity
+- Administrative actions
+
+Telemetry should contain sufficient contextual information to support detection and investigation while avoiding unnecessary exposure of sensitive information.
+
+Primary security relevance:
+
+- Security visibility
+- Event integrity
+- Detection capability
+- Investigation capability
+- Sensitive information protection
+
+---
+
+### DF-07 — Detection and Alert Flow
+
+```text
+Wazuh
+   ↓
+Decoder
+   ↓
+Detection Rule
+   ↓
+Alert
+```
+
+This flow represents the processing of collected security telemetry.
+
+Wazuh receives security events and processes them through its detection pipeline.
+
+The decoder interprets the structure of the incoming event.
+
+Detection rules evaluate whether the event or event pattern represents a defined security condition.
+
+When the relevant detection criteria are satisfied, Wazuh generates an alert.
+
+Primary security relevance:
+
+- Detection accuracy
+- Detection coverage
+- False-positive management
+- Alert generation
+- Security monitoring
+
+A security event does not automatically constitute an incident.
+
+The conceptual relationship is:
+
+```text
+Security Event
+      ↓
+Detection
+      ↓
+Alert
+      ↓
+Investigation
+      ↓
+Incident Classification
+```
+
+---
+
+### DF-08 — SOC Investigation Evidence Flow
+
+```text
+Wazuh Alert
+     ↓
+Evidence Collection
+     ↓
+Timeline
+     ↓
+Scope
+     ↓
+Classification
+     ↓
+Investigation
+```
+
+This flow represents the movement and correlation of security evidence during SOC analysis.
+
+The investigation may correlate:
+
+- Wazuh alerts
+- Application logs
+- Authentication events
+- Authorization events
+- Request activity
+- Timestamps
+- Source information
+- Attack activity
+
+The objective is to establish:
+
+1. What happened.
+2. When it happened.
+3. Which identity or resource was affected.
+4. Whether the activity was malicious.
+5. What the scope of the activity was.
+6. Which security controls were involved.
+7. What remediation is required.
+
+The broader investigation lifecycle is:
+
+```text
+Alert
+  ↓
+Triage
+  ↓
+Evidence Collection
+  ↓
+Timeline
+  ↓
+Scope
+  ↓
+Classification
+  ↓
+MITRE ATT&CK Mapping
+  ↓
+Response
+  ↓
+Remediation
+  ↓
+Retest
+```
+
+Primary security relevance:
+
+- Incident investigation
+- Evidence preservation
+- Attack reconstruction
+- Scope determination
+- Detection validation
+- Security control validation
+
+---
+
+## 0.10.2.1 Data Flow Relationships
+
+The individual flows are not independent.
+
+They form a connected security pipeline:
+
+```text
+DF-01
+Application Request
+       ↓
+DF-02
+Authentication
+       ↓
+DF-03
+Authorization
+       ↓
+Protected Resource
+       ↓
+┌───────────────┐
+│               │
+▼               ▼
+DF-04          DF-05
+CompreFace     PostgreSQL
+│               │
+└───────┬───────┘
+        ↓
+DF-06
+Security Telemetry
+        ↓
+DF-07
+Detection & Alert
+        ↓
+DF-08
+SOC Investigation
+```
+
+This relationship establishes the principal security chain of the laboratory:
+
+```text
+Application Activity
+        ↓
+Security Control
+        ↓
+Protected Resource
+        ↓
+Observable Event
+        ↓
+Detection
+        ↓
+Investigation
+```
+
+This model will be used as the baseline for subsequent threat analysis and security testing.
+
+---
+
+## 0.10.2.2 Data Flow Security Perspective
+
+Each flow represents a potential security boundary, attack surface, or source of security telemetry.
+
+The principal relationships are:
+
+```text
+Data Flow
+    ↓
+Trust Boundary
+    ↓
+Attack Surface
+    ↓
+Threat
+    ↓
+Security Control
+    ↓
+Security Telemetry
+```
+
+This allows the data-flow model to remain directly connected to the other security documentation produced during M0.
+
+The relationships are:
+
+```text
+Assets
+  ↓
+Data Flows
+  ↓
+Threat Model
+  ↓
+Security Controls
+  ↓
+Telemetry
+  ↓
+Detection
+```
+
+The inventory established in this section therefore serves as the reference index for the detailed data-flow analysis that follows.
